@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from flask import Blueprint, jsonify
-from sqlalchemy import Integer, cast, func
+from sqlalchemy import Integer, Numeric, cast, func
 
 from app.models import BattingStat, BowlingStat, Contract, Match, Player, Team, db
 
@@ -65,15 +65,13 @@ def top_bowlers():
 @bp.route("/analytics/value_players", methods=["GET"])
 def value_players():
     not_outs = func.sum(cast(BattingStat.not_out, Integer))
-    value_index = (
-        (
-            func.sum(BattingStat.runs)
-            + 2 * func.sum(BattingStat.fours)
-            + 3 * func.sum(BattingStat.sixes)
-            + 5 * not_outs
-        )
-        / func.sum(Contract.salary_inr)
+    points = (
+        func.sum(BattingStat.runs)
+        + 2 * func.sum(BattingStat.fours)
+        + 3 * func.sum(BattingStat.sixes)
+        + 5 * not_outs
     )
+    value_index = (cast(points, Numeric(20, 10)) * 10000000) / func.sum(Contract.salary_inr)
 
     result = (
         db.session.query(

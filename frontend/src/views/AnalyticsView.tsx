@@ -60,11 +60,6 @@ function formatCurrency(value: AnalyticsNumber) {
   return numberValue === null ? 'N/A' : '₹' + numberValue.toLocaleString('en-IN')
 }
 
-function formatExponential(value: AnalyticsNumber) {
-  const numberValue = toFiniteNumber(value)
-  return numberValue === null ? 'N/A' : numberValue.toExponential(2)
-}
-
 export function AnalyticsView() {
   const [topBatsmen, setTopBatsmen] = useState<TopBatsman[]>([])
   const [topBowlers, setTopBowlers] = useState<TopBowler[]>([])
@@ -170,7 +165,7 @@ export function AnalyticsView() {
               <div className="lg:col-span-2">
                 <AnalyticsCard
                   title="Value Players (Salary vs Performance)"
-                  columns={['Player', 'Runs', '4s', '6s', 'Not Outs', 'Salary', 'Value Index']}
+                  columns={['Player', 'Runs', '4s', '6s', 'Not Outs', 'Salary', 'Value Index / Cr']}
                   rows={valuePlayers.map((row) => [
                     row.name,
                     formatNumber(row.runs),
@@ -178,7 +173,7 @@ export function AnalyticsView() {
                     formatNumber(row.sixes),
                     formatNumber(row.not_outs),
                     formatCurrency(row.salary),
-                    formatExponential(row.value_index),
+                    formatFixed(row.value_index),
                   ])}
                 />
               </div>
