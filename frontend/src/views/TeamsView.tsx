@@ -13,7 +13,6 @@ export function TeamsView() {
   return (
     <ResourceTablePage<TeamRow>
       title="Teams"
-      description="GET /teams lists team metadata and home venue references."
       endpoint="/teams"
       searchableFields={['id', 'name', 'league', 'home_venue_id', 'owner', 'coach']}
       rowKey={(row) => row.id}

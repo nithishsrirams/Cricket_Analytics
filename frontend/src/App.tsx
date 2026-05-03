@@ -27,10 +27,6 @@ function App() {
             Cricket Analytics Dashboard
           </p>
           <h1 className="mt-2 text-2xl font-bold text-white sm:text-3xl">League Intelligence Hub</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-300">
-            Frontend views mapped to the Flask API surface: core resources, analytics queries, and a compact API
-            summary for the final report.
-          </p>
           <nav className="mt-4 flex flex-wrap gap-2">
             <NavLink to="/players" className={navLinkClass}>
               Players

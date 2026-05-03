@@ -13,7 +13,6 @@ export function ContractsView() {
   return (
     <ResourceTablePage<ContractRow>
       title="Contracts"
-      description="GET /contracts exposes player-team-season contract assignments and salary data."
       endpoint="/contracts"
       searchableFields={['id', 'player_id', 'team_id', 'season_id', 'salary', 'type']}
       rowKey={(row) => row.id}
@@ -25,7 +24,6 @@ export function ContractsView() {
         { key: 'salary', header: 'Salary INR', value: (row) => row.salary.toLocaleString('en-IN') },
         { key: 'type', header: 'Type', value: (row) => row.type || 'Unknown' },
       ]}
-      badgeText="Editable core"
       createForm={{
         title: 'Add Contract',
         endpoint: '/contracts',

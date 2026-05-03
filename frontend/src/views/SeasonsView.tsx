@@ -12,7 +12,6 @@ export function SeasonsView() {
   return (
     <ResourceTablePage<SeasonRow>
       title="Seasons"
-      description="GET /seasons gives season metadata, including playoff format and team count."
       endpoint="/seasons"
       searchableFields={['id', 'year', 'league', 'playoff_format', 'total_teams']}
       rowKey={(row) => row.id}

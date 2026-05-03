@@ -125,9 +125,6 @@ export function PlayersView() {
     <section className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 shadow-xl">
       <div className="border-b border-white/10 p-5 sm:p-6">
         <h2 className="text-2xl font-semibold text-white">Players</h2>
-        <p className="mt-1 text-sm text-slate-300">
-          Data source: GET /players. Search by name or ID, then narrow by role.
-        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 border-b border-white/10 p-5 sm:grid-cols-2 sm:p-6">

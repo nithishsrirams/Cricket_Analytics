@@ -16,7 +16,6 @@ export function MatchesView() {
   return (
     <ResourceTablePage<MatchRow>
       title="Matches"
-      description="GET /matches returns match fixtures/results. POST /matches adds new records."
       endpoint="/matches"
       searchableFields={[
         'id',

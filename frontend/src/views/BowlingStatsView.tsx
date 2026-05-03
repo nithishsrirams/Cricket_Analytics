@@ -14,7 +14,6 @@ export function BowlingStatsView() {
   return (
     <ResourceTablePage<BowlingRow>
       title="Bowling Stats"
-      description="GET /bowling_stats lists bowling figures and wickets for each player-match row."
       endpoint="/bowling_stats"
       searchableFields={['id', 'match_id', 'player_id', 'overs', 'wickets', 'runs_conceded', 'extras']}
       rowKey={(row) => row.id}

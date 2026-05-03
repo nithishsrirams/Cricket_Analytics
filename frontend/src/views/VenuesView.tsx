@@ -12,7 +12,6 @@ export function VenuesView() {
   return (
     <ResourceTablePage<VenueRow>
       title="Venues"
-      description="GET /venues returns stadium locations and capacities."
       endpoint="/venues"
       searchableFields={['id', 'name', 'city', 'country', 'capacity']}
       rowKey={(row) => row.id}

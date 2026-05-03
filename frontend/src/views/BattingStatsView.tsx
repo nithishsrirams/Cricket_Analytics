@@ -15,7 +15,6 @@ export function BattingStatsView() {
   return (
     <ResourceTablePage<BattingRow>
       title="Batting Stats"
-      description="GET /batting_stats lists scorecard-style batting records per match."
       endpoint="/batting_stats"
       searchableFields={['id', 'match_id', 'player_id', 'runs', 'balls', 'fours', 'sixes']}
       rowKey={(row) => row.id}
