@@ -1,4 +1,6 @@
-import { ResourceTablePage } from '../components/ResourceTablePage'
+import { useEffect, useMemo, useState } from 'react'
+
+import { fetchJson, postJson } from '../lib/api'
 
 type TeamRow = {
   id: number
@@ -9,40 +11,304 @@ type TeamRow = {
   coach: string | null
 }
 
+type VenueRow = {
+  id: number
+  name: string
+  city: string | null
+  country: string | null
+}
+
+type TeamFormValues = {
+  name: string
+  league: string
+  home_venue_id: string
+  owner: string
+  coach: string
+}
+
+const initialFormValues: TeamFormValues = {
+  name: '',
+  league: '',
+  home_venue_id: '',
+  owner: '',
+  coach: '',
+}
+
+const inputClass =
+  'mt-1 w-full rounded-lg border border-white/20 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-amber-400 focus:outline-none'
+
+const selectClass =
+  'mt-1 w-full rounded-lg border border-white/20 bg-slate-800 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none'
+
 export function TeamsView() {
+  const [teams, setTeams] = useState<TeamRow[]>([])
+  const [venues, setVenues] = useState<VenueRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchText, setSearchText] = useState('')
+  const [reloadCount, setReloadCount] = useState(0)
+  const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [formValues, setFormValues] = useState<TeamFormValues>(initialFormValues)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadTeamData() {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const [teamData, venueData] = await Promise.all([
+          fetchJson<TeamRow[]>('/teams'),
+          fetchJson<VenueRow[]>('/venues'),
+        ])
+
+        if (isMounted) {
+          setTeams(teamData)
+          setVenues(venueData)
+        }
+      } catch (fetchError) {
+        if (isMounted) {
+          setError(fetchError instanceof Error ? fetchError.message : 'Could not load teams')
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadTeamData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [reloadCount])
+
+  const venueById = useMemo(() => new Map(venues.map((venue) => [venue.id, venue])), [venues])
+
+  const leagueOptions = useMemo(() => {
+    const leagues = new Set(
+      teams
+        .map((team) => team.league?.trim())
+        .filter((league): league is string => Boolean(league)),
+    )
+
+    return Array.from(leagues).sort((a, b) => a.localeCompare(b))
+  }, [teams])
+
+  function getVenueLabel(venueId: number | null) {
+    if (venueId === null) {
+      return 'N/A'
+    }
+
+    const venue = venueById.get(venueId)
+    if (!venue) {
+      return `Venue ${venueId}`
+    }
+
+    return [venue.name, venue.city].filter(Boolean).join(', ')
+  }
+
+  const normalizedSearch = searchText.trim().toLowerCase()
+  const filteredTeams = normalizedSearch
+    ? teams.filter((team) =>
+        [
+          team.id,
+          team.name,
+          team.league,
+          getVenueLabel(team.home_venue_id),
+          team.owner,
+          team.coach,
+        ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch)),
+      )
+    : teams
+
+  function updateFormField(field: keyof TeamFormValues, value: string) {
+    setFormValues((current) => ({ ...current, [field]: value }))
+  }
+
+  async function handleCreateTeam(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setCreateError(null)
+    setCreateSuccess(null)
+    setIsCreating(true)
+
+    try {
+      await postJson('/teams', {
+        name: formValues.name,
+        league: formValues.league,
+        home_venue_id: formValues.home_venue_id ? Number(formValues.home_venue_id) : undefined,
+        owner: formValues.owner || undefined,
+        coach: formValues.coach || undefined,
+      })
+
+      setFormValues(initialFormValues)
+      setCreateSuccess('Team added successfully.')
+      setReloadCount((count) => count + 1)
+    } catch (submitError) {
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add team')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   return (
-    <ResourceTablePage<TeamRow>
-      title="Teams"
-      endpoint="/teams"
-      searchableFields={['id', 'name', 'league', 'home_venue_id', 'owner', 'coach']}
-      rowKey={(row) => row.id}
-      columns={[
-        { key: 'id', header: 'ID', value: (row) => row.id },
-        { key: 'name', header: 'Name', value: (row) => row.name },
-        { key: 'league', header: 'League', value: (row) => row.league || 'Unknown' },
-        { key: 'home_venue_id', header: 'Home Venue', value: (row) => row.home_venue_id ?? 'N/A' },
-        { key: 'owner', header: 'Owner', value: (row) => row.owner || 'Unknown' },
-        { key: 'coach', header: 'Coach', value: (row) => row.coach || 'Unknown' },
-      ]}
-      createForm={{
-        title: 'Add Team',
-        endpoint: '/teams',
-        submitLabel: 'Add Team',
-        fields: [
-          { name: 'name', label: 'Team Name', required: true },
-          { name: 'league', label: 'League', required: true },
-          { name: 'home_venue_id', label: 'Home Venue ID', type: 'number' },
-          { name: 'owner', label: 'Owner' },
-          { name: 'coach', label: 'Coach' },
-        ],
-        buildPayload: (values) => ({
-          name: values.name,
-          league: values.league,
-          home_venue_id: values.home_venue_id ? Number(values.home_venue_id) : undefined,
-          owner: values.owner || undefined,
-          coach: values.coach || undefined,
-        }),
-      }}
-    />
+    <section className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 shadow-xl">
+      <div className="border-b border-white/10 p-5 sm:p-6">
+        <h2 className="text-2xl font-semibold text-white">Teams</h2>
+      </div>
+
+      <div className="border-b border-white/10 p-5 sm:p-6">
+        <label className="text-sm font-medium text-slate-200">
+          Search
+          <input
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="Search teams"
+            className={inputClass}
+          />
+        </label>
+      </div>
+
+      <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
+        <h3 className="text-base font-semibold text-white">Add Team</h3>
+        <form onSubmit={handleCreateTeam} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="text-sm font-medium text-slate-200">
+            Team Name
+            <input
+              value={formValues.name}
+              required
+              onChange={(event) => updateFormField('name', event.target.value)}
+              className={inputClass}
+            />
+          </label>
+
+          <label className="text-sm font-medium text-slate-200">
+            League
+            <input
+              list="team-league-options"
+              value={formValues.league}
+              required
+              placeholder="Select or type league"
+              onChange={(event) => updateFormField('league', event.target.value)}
+              className={inputClass}
+            />
+            <datalist id="team-league-options">
+              {leagueOptions.map((league) => (
+                <option key={league} value={league} />
+              ))}
+            </datalist>
+          </label>
+
+          <label className="text-sm font-medium text-slate-200">
+            Home Venue
+            <select
+              value={formValues.home_venue_id}
+              onChange={(event) => updateFormField('home_venue_id', event.target.value)}
+              className={selectClass}
+            >
+              <option value="">No home venue</option>
+              {venues.map((venue) => (
+                <option key={venue.id} value={venue.id}>
+                  {getVenueLabel(venue.id)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-sm font-medium text-slate-200">
+            Owner
+            <input
+              value={formValues.owner}
+              onChange={(event) => updateFormField('owner', event.target.value)}
+              className={inputClass}
+            />
+          </label>
+
+          <label className="text-sm font-medium text-slate-200">
+            Coach
+            <input
+              value={formValues.coach}
+              onChange={(event) => updateFormField('coach', event.target.value)}
+              className={inputClass}
+            />
+          </label>
+
+          <div className="sm:col-span-2 lg:col-span-5">
+            <button
+              type="submit"
+              disabled={isCreating}
+              className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isCreating ? 'Adding...' : 'Add Team'}
+            </button>
+            {createError ? <p className="mt-2 text-sm text-red-300">{createError}</p> : null}
+            {createSuccess ? <p className="mt-2 text-sm text-emerald-300">{createSuccess}</p> : null}
+          </div>
+        </form>
+      </div>
+
+      {loading ? (
+        <p className="p-6 text-sm text-slate-300">Loading teams...</p>
+      ) : error ? (
+        <p className="p-6 text-sm text-red-300">Failed to load teams: {error}</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-white/10">
+              <thead className="bg-slate-800/60">
+                <tr>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    ID
+                  </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Name
+                  </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    League
+                  </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Home Venue
+                  </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Owner
+                  </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Coach
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {filteredTeams.map((team) => (
+                  <tr key={team.id} className="hover:bg-white/5">
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{team.id}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{team.name}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      {team.league || 'Unknown'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      {getVenueLabel(team.home_venue_id)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      {team.owner || 'Unknown'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      {team.coach || 'Unknown'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="border-t border-white/10 p-4 text-right text-xs text-slate-400">
+            Showing {filteredTeams.length} of {teams.length} teams
+          </p>
+        </>
+      )}
+    </section>
   )
 }
