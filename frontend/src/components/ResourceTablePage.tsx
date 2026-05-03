@@ -88,19 +88,6 @@ export function ResourceTablePage<T extends Record<string, unknown>>({
     }
   }, [endpoint, reloadCount])
 
-  useEffect(() => {
-    if (!createForm) {
-      return
-    }
-
-    setFormValues(
-      createForm.fields.reduce<Record<string, string>>((acc, field) => {
-        acc[field.name] = ''
-        return acc
-      }, {}),
-    )
-  }, [createForm])
-
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchText.trim().toLowerCase()
 
