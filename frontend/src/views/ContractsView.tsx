@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type ContractRow = {
   id: number
@@ -63,6 +63,8 @@ export function ContractsView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingContractId, setEditingContractId] = useState<number | null>(null)
+  const [deletingContractId, setDeletingContractId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<ContractFormValues>(initialFormValues)
 
   useEffect(() => {
@@ -161,28 +163,69 @@ export function ContractsView() {
     setFormValues((current) => ({ ...current, [field]: value }))
   }
 
-  async function handleCreateContract(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues(initialFormValues)
+    setEditingContractId(null)
+  }
+
+  function handleEditContract(contract: ContractRow) {
+    setEditingContractId(contract.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      player_id: String(contract.player_id),
+      team_id: String(contract.team_id),
+      season_id: String(contract.season_id),
+      salary_inr: String(contract.salary),
+      contract_type: contract.type || '',
+    })
+  }
+
+  async function handleSubmitContract(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
     setIsCreating(true)
 
     try {
-      await postJson('/contracts', {
+      const payload = {
         player_id: Number(formValues.player_id),
         team_id: Number(formValues.team_id),
         season_id: Number(formValues.season_id),
         salary_inr: Number(formValues.salary_inr),
         contract_type: formValues.contract_type,
-      })
+      }
 
-      setFormValues(initialFormValues)
-      setCreateSuccess('Contract added successfully.')
+      if (editingContractId) {
+        await putJson(`/contracts/${editingContractId}`, payload)
+      } else {
+        await postJson('/contracts', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingContractId ? 'Contract updated successfully.' : 'Contract added successfully.')
       setReloadCount((count) => count + 1)
     } catch (submitError) {
-      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add contract')
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not save contract')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteContract(contractId: number) {
+    setDeletingContractId(contractId)
+    setError(null)
+
+    try {
+      await deleteJson(`/contracts/${contractId}`)
+      setContracts((current) => current.filter((contract) => contract.id !== contractId))
+      if (editingContractId === contractId) {
+        resetForm()
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete contract')
+    } finally {
+      setDeletingContractId(null)
     }
   }
 
@@ -205,8 +248,8 @@ export function ContractsView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Contract</h3>
-        <form onSubmit={handleCreateContract} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <h3 className="text-base font-semibold text-white">{editingContractId ? 'Edit Contract' : 'Add Contract'}</h3>
+        <form onSubmit={handleSubmitContract} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm font-medium text-slate-200">
             Player
             <select
@@ -293,8 +336,17 @@ export function ContractsView() {
               disabled={isCreating}
               className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Contract'}
+              {isCreating ? 'Saving...' : editingContractId ? 'Save Contract' : 'Add Contract'}
             </button>
+            {editingContractId ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="ml-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            ) : null}
             {createError ? <p className="mt-2 text-sm text-red-300">{createError}</p> : null}
             {createSuccess ? <p className="mt-2 text-sm text-emerald-300">{createSuccess}</p> : null}
           </div>
@@ -329,6 +381,9 @@ export function ContractsView() {
                   <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Type
                   </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -349,6 +404,25 @@ export function ContractsView() {
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
                       {contract.type || 'Unknown'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditContract(contract)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingContractId === contract.id}
+                          onClick={() => handleDeleteContract(contract.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingContractId === contract.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

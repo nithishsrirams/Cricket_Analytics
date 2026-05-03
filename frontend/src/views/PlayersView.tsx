@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type Player = {
   id: number
@@ -25,6 +25,7 @@ export function PlayersView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null)
   const [deletingPlayerId, setDeletingPlayerId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState({
     name: '',
@@ -101,24 +102,46 @@ export function PlayersView() {
     })
   }, [players, searchText, selectedRole])
 
-  async function handleCreatePlayer(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues({ name: '', nationality: '', role: '' })
+    setEditingPlayerId(null)
+  }
+
+  function handleEditPlayer(player: Player) {
+    setEditingPlayerId(player.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      name: player.name,
+      nationality: player.nationality || '',
+      role: player.role || '',
+    })
+  }
+
+  async function handleSubmitPlayer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
     setIsCreating(true)
 
     try {
-      await postJson('/players', {
+      const payload = {
         name: formValues.name,
         nationality: formValues.nationality,
         role: formValues.role,
-      })
+      }
 
-      setFormValues({ name: '', nationality: '', role: '' })
-      setCreateSuccess('Player added successfully.')
+      if (editingPlayerId) {
+        await putJson(`/players/${editingPlayerId}`, payload)
+      } else {
+        await postJson('/players', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingPlayerId ? 'Player updated successfully.' : 'Player added successfully.')
       setReloadCount((count) => count + 1)
     } catch (createPlayerError) {
-      setCreateError(createPlayerError instanceof Error ? createPlayerError.message : 'Could not add player')
+      setCreateError(createPlayerError instanceof Error ? createPlayerError.message : 'Could not save player')
     } finally {
       setIsCreating(false)
     }
@@ -129,12 +152,11 @@ export function PlayersView() {
     setError(null)
 
     try {
-      const response = await fetch(`/players/${playerId}`, { method: 'DELETE' })
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`)
-      }
-
+      await deleteJson(`/players/${playerId}`)
       setPlayers((current) => current.filter((player) => player.id !== playerId))
+      if (editingPlayerId === playerId) {
+        resetForm()
+      }
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not delete player')
     } finally {
@@ -176,8 +198,8 @@ export function PlayersView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Player</h3>
-        <form onSubmit={handleCreatePlayer} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <h3 className="text-base font-semibold text-white">{editingPlayerId ? 'Edit Player' : 'Add Player'}</h3>
+        <form onSubmit={handleSubmitPlayer} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium text-slate-200">
             Name
             <input
@@ -228,9 +250,21 @@ export function PlayersView() {
               disabled={isCreating}
               className="w-full rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Player'}
+              {isCreating ? 'Saving...' : editingPlayerId ? 'Save Player' : 'Add Player'}
             </button>
           </div>
+
+          {editingPlayerId ? (
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="w-full rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            </div>
+          ) : null}
 
           {createError ? <p className="sm:col-span-2 lg:col-span-4 text-sm text-red-300">{createError}</p> : null}
           {createSuccess ? <p className="sm:col-span-2 lg:col-span-4 text-sm text-emerald-300">{createSuccess}</p> : null}
@@ -254,6 +288,9 @@ export function PlayersView() {
                     Name
                   </th>
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Nationality
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Role
                   </th>
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
@@ -267,17 +304,29 @@ export function PlayersView() {
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{player.id}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm font-medium text-white">{player.name}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      {player.nationality || 'Unknown'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
                       {player.role || 'Unknown'}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
-                      <button
-                        type="button"
-                        disabled={deletingPlayerId === player.id}
-                        onClick={() => handleDeletePlayer(player.id)}
-                        className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {deletingPlayerId === player.id ? 'Deleting...' : 'Delete'}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditPlayer(player)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingPlayerId === player.id}
+                          onClick={() => handleDeletePlayer(player.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingPlayerId === player.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

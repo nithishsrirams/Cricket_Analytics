@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type BattingRow = {
   id: number
@@ -69,6 +69,8 @@ export function BattingStatsView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingBattingStatId, setEditingBattingStatId] = useState<number | null>(null)
+  const [deletingBattingStatId, setDeletingBattingStatId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<BattingFormValues>(initialFormValues)
 
   useEffect(() => {
@@ -152,14 +154,34 @@ export function BattingStatsView() {
     setFormValues((current) => ({ ...current, [field]: value }))
   }
 
-  async function handleCreateBattingStat(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues(initialFormValues)
+    setEditingBattingStatId(null)
+  }
+
+  function handleEditBattingStat(stat: BattingRow) {
+    setEditingBattingStatId(stat.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      match_id: String(stat.match_id),
+      player_id: String(stat.player_id),
+      runs: String(stat.runs),
+      balls_faced: String(stat.balls),
+      fours: String(stat.fours),
+      sixes: String(stat.sixes),
+      not_out: stat.not_out ? 'true' : 'false',
+    })
+  }
+
+  async function handleSubmitBattingStat(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
     setIsCreating(true)
 
     try {
-      await postJson('/batting_stats', {
+      const payload = {
         match_id: Number(formValues.match_id),
         player_id: Number(formValues.player_id),
         runs: Number(formValues.runs),
@@ -167,15 +189,38 @@ export function BattingStatsView() {
         fours: Number(formValues.fours),
         sixes: Number(formValues.sixes),
         not_out: formValues.not_out === 'true',
-      })
+      }
 
-      setFormValues(initialFormValues)
-      setCreateSuccess('Batting stat added successfully.')
+      if (editingBattingStatId) {
+        await putJson(`/batting_stats/${editingBattingStatId}`, payload)
+      } else {
+        await postJson('/batting_stats', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingBattingStatId ? 'Batting stat updated successfully.' : 'Batting stat added successfully.')
       setReloadCount((count) => count + 1)
     } catch (submitError) {
-      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add batting stat')
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not save batting stat')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteBattingStat(statId: number) {
+    setDeletingBattingStatId(statId)
+    setError(null)
+
+    try {
+      await deleteJson(`/batting_stats/${statId}`)
+      setBattingStats((current) => current.filter((stat) => stat.id !== statId))
+      if (editingBattingStatId === statId) {
+        resetForm()
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete batting stat')
+    } finally {
+      setDeletingBattingStatId(null)
     }
   }
 
@@ -198,8 +243,10 @@ export function BattingStatsView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Batting Stat</h3>
-        <form onSubmit={handleCreateBattingStat} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <h3 className="text-base font-semibold text-white">
+          {editingBattingStatId ? 'Edit Batting Stat' : 'Add Batting Stat'}
+        </h3>
+        <form onSubmit={handleSubmitBattingStat} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium text-slate-200">
             Match
             <select
@@ -302,9 +349,21 @@ export function BattingStatsView() {
               disabled={isCreating}
               className="w-full rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Batting Stat'}
+              {isCreating ? 'Saving...' : editingBattingStatId ? 'Save Batting Stat' : 'Add Batting Stat'}
             </button>
           </div>
+
+          {editingBattingStatId ? (
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="w-full rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            </div>
+          ) : null}
 
           {createError ? <p className="sm:col-span-2 lg:col-span-4 text-sm text-red-300">{createError}</p> : null}
           {createSuccess ? (
@@ -347,6 +406,9 @@ export function BattingStatsView() {
                   <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Not Out
                   </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -365,6 +427,25 @@ export function BattingStatsView() {
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{stat.sixes}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
                       {stat.not_out ? 'Yes' : 'No'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditBattingStat(stat)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingBattingStatId === stat.id}
+                          onClick={() => handleDeleteBattingStat(stat.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingBattingStatId === stat.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

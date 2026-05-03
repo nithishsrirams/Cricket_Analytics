@@ -13,6 +13,21 @@ def _distinct_player_values(column):
     )
 
 
+def _player_payload(data):
+    name = (data.get("name") or "").strip()
+    nationality = (data.get("nationality") or "").strip()
+    role = (data.get("role") or "").strip()
+
+    if not name or not nationality or not role:
+        return None, jsonify({"message": "Name, nationality, and role are required"}), 400
+
+    return {
+        "name": name,
+        "nationality": nationality,
+        "role": role,
+    }, None, None
+
+
 @bp.route("/players", methods=["GET"])
 def get_players():
     role = request.args.get("role")
@@ -45,17 +60,12 @@ def get_player_options():
 @bp.route("/players", methods=["POST"])
 def add_player():
     data = request.get_json() or {}
-    name = (data.get("name") or "").strip()
-    nationality = (data.get("nationality") or "").strip()
-    role = (data.get("role") or "").strip()
-
-    if not name or not nationality or not role:
-        return jsonify({"message": "Name, nationality, and role are required"}), 400
+    payload, error_response, status_code = _player_payload(data)
+    if error_response:
+        return error_response, status_code
 
     new_player = Player(
-        name=name,
-        nationality=nationality,
-        role=role,
+        **payload,
     )
 
     db.session.add(new_player)
@@ -73,6 +83,23 @@ def get_player(id):
         "nationality": player.nationality,
         "role": player.role
     })
+
+
+@bp.route("/players/<int:id>", methods=["PUT"])
+def update_player(id):
+    player = Player.query.get_or_404(id)
+    data = request.get_json() or {}
+    payload, error_response, status_code = _player_payload(data)
+    if error_response:
+        return error_response, status_code
+
+    player.name = payload["name"]
+    player.nationality = payload["nationality"]
+    player.role = payload["role"]
+
+    db.session.commit()
+
+    return jsonify({"message": "Player updated successfully"})
 
 
 @bp.route("/players/<int:id>", methods=["DELETE"])

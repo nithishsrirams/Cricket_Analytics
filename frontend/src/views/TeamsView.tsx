@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type TeamRow = {
   id: number
@@ -50,6 +50,8 @@ export function TeamsView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingTeamId, setEditingTeamId] = useState<number | null>(null)
+  const [deletingTeamId, setDeletingTeamId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<TeamFormValues>(initialFormValues)
 
   useEffect(() => {
@@ -130,28 +132,69 @@ export function TeamsView() {
     setFormValues((current) => ({ ...current, [field]: value }))
   }
 
-  async function handleCreateTeam(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues(initialFormValues)
+    setEditingTeamId(null)
+  }
+
+  function handleEditTeam(team: TeamRow) {
+    setEditingTeamId(team.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      name: team.name,
+      league: team.league || '',
+      home_venue_id: team.home_venue_id === null ? '' : String(team.home_venue_id),
+      owner: team.owner || '',
+      coach: team.coach || '',
+    })
+  }
+
+  async function handleSubmitTeam(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
     setIsCreating(true)
 
     try {
-      await postJson('/teams', {
+      const payload = {
         name: formValues.name,
         league: formValues.league,
         home_venue_id: formValues.home_venue_id ? Number(formValues.home_venue_id) : undefined,
         owner: formValues.owner || undefined,
         coach: formValues.coach || undefined,
-      })
+      }
 
-      setFormValues(initialFormValues)
-      setCreateSuccess('Team added successfully.')
+      if (editingTeamId) {
+        await putJson(`/teams/${editingTeamId}`, payload)
+      } else {
+        await postJson('/teams', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingTeamId ? 'Team updated successfully.' : 'Team added successfully.')
       setReloadCount((count) => count + 1)
     } catch (submitError) {
-      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add team')
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not save team')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteTeam(teamId: number) {
+    setDeletingTeamId(teamId)
+    setError(null)
+
+    try {
+      await deleteJson(`/teams/${teamId}`)
+      setTeams((current) => current.filter((team) => team.id !== teamId))
+      if (editingTeamId === teamId) {
+        resetForm()
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete team')
+    } finally {
+      setDeletingTeamId(null)
     }
   }
 
@@ -174,8 +217,8 @@ export function TeamsView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Team</h3>
-        <form onSubmit={handleCreateTeam} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <h3 className="text-base font-semibold text-white">{editingTeamId ? 'Edit Team' : 'Add Team'}</h3>
+        <form onSubmit={handleSubmitTeam} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm font-medium text-slate-200">
             Team Name
             <input
@@ -243,8 +286,17 @@ export function TeamsView() {
               disabled={isCreating}
               className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Team'}
+              {isCreating ? 'Saving...' : editingTeamId ? 'Save Team' : 'Add Team'}
             </button>
+            {editingTeamId ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="ml-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            ) : null}
             {createError ? <p className="mt-2 text-sm text-red-300">{createError}</p> : null}
             {createSuccess ? <p className="mt-2 text-sm text-emerald-300">{createSuccess}</p> : null}
           </div>
@@ -279,6 +331,9 @@ export function TeamsView() {
                   <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Coach
                   </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -297,6 +352,25 @@ export function TeamsView() {
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
                       {team.coach || 'Unknown'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditTeam(team)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingTeamId === team.id}
+                          onClick={() => handleDeleteTeam(team.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingTeamId === team.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

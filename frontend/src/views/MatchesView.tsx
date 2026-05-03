@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type MatchRow = {
   id: number
@@ -74,6 +74,8 @@ export function MatchesView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingMatchId, setEditingMatchId] = useState<number | null>(null)
+  const [deletingMatchId, setDeletingMatchId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<MatchFormValues>(initialFormValues)
 
   useEffect(() => {
@@ -207,7 +209,28 @@ export function MatchesView() {
     })
   }
 
-  async function handleCreateMatch(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues(initialFormValues)
+    setEditingMatchId(null)
+  }
+
+  function handleEditMatch(match: MatchRow) {
+    setEditingMatchId(match.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      season_id: String(match.season_id),
+      venue_id: String(match.venue_id),
+      match_date: match.match_date,
+      format: match.format || '',
+      home_team_id: String(match.home_team_id),
+      away_team_id: String(match.away_team_id),
+      winner_team_id: match.winner_team_id === null ? '' : String(match.winner_team_id),
+      toss_winner_team_id: match.toss_winner_team_id === null ? '' : String(match.toss_winner_team_id),
+    })
+  }
+
+  async function handleSubmitMatch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
@@ -220,7 +243,7 @@ export function MatchesView() {
     setIsCreating(true)
 
     try {
-      await postJson('/matches', {
+      const payload = {
         season_id: Number(formValues.season_id),
         venue_id: Number(formValues.venue_id),
         match_date: formValues.match_date,
@@ -229,15 +252,38 @@ export function MatchesView() {
         away_team_id: Number(formValues.away_team_id),
         winner_team_id: formValues.winner_team_id ? Number(formValues.winner_team_id) : undefined,
         toss_winner_team_id: formValues.toss_winner_team_id ? Number(formValues.toss_winner_team_id) : undefined,
-      })
+      }
 
-      setFormValues(initialFormValues)
-      setCreateSuccess('Match added successfully.')
+      if (editingMatchId) {
+        await putJson(`/matches/${editingMatchId}`, payload)
+      } else {
+        await postJson('/matches', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingMatchId ? 'Match updated successfully.' : 'Match added successfully.')
       setReloadCount((count) => count + 1)
     } catch (submitError) {
-      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add match')
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not save match')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteMatch(matchId: number) {
+    setDeletingMatchId(matchId)
+    setError(null)
+
+    try {
+      await deleteJson(`/matches/${matchId}`)
+      setMatches((current) => current.filter((match) => match.id !== matchId))
+      if (editingMatchId === matchId) {
+        resetForm()
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete match')
+    } finally {
+      setDeletingMatchId(null)
     }
   }
 
@@ -260,8 +306,8 @@ export function MatchesView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Match</h3>
-        <form onSubmit={handleCreateMatch} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <h3 className="text-base font-semibold text-white">{editingMatchId ? 'Edit Match' : 'Add Match'}</h3>
+        <form onSubmit={handleSubmitMatch} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium text-slate-200">
             Season
             <select
@@ -398,9 +444,21 @@ export function MatchesView() {
               disabled={isCreating}
               className="w-full rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Match'}
+              {isCreating ? 'Saving...' : editingMatchId ? 'Save Match' : 'Add Match'}
             </button>
           </div>
+
+          {editingMatchId ? (
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="w-full rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            </div>
+          ) : null}
 
           {createError ? <p className="sm:col-span-2 lg:col-span-4 text-sm text-red-300">{createError}</p> : null}
           {createSuccess ? (
@@ -446,6 +504,9 @@ export function MatchesView() {
                   <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Toss Winner
                   </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -473,6 +534,25 @@ export function MatchesView() {
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
                       {getTeamLabel(match.toss_winner_team_id)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditMatch(match)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingMatchId === match.id}
+                          onClick={() => handleDeleteMatch(match.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingMatchId === match.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

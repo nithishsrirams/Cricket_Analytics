@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type SeasonRow = {
   id: number
@@ -36,6 +36,8 @@ export function SeasonsView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
+  const [deletingSeasonId, setDeletingSeasonId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<SeasonFormValues>(initialFormValues)
 
   useEffect(() => {
@@ -101,27 +103,67 @@ export function SeasonsView() {
     setFormValues((current) => ({ ...current, [field]: value }))
   }
 
-  async function handleCreateSeason(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues(initialFormValues)
+    setEditingSeasonId(null)
+  }
+
+  function handleEditSeason(season: SeasonRow) {
+    setEditingSeasonId(season.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      year: String(season.year),
+      league: season.league || '',
+      playoff_format: season.playoff_format || '',
+      total_teams: String(season.total_teams),
+    })
+  }
+
+  async function handleSubmitSeason(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
     setIsCreating(true)
 
     try {
-      await postJson('/seasons', {
+      const payload = {
         year: Number(formValues.year),
         league: formValues.league,
         playoff_format: formValues.playoff_format || undefined,
         total_teams: Number(formValues.total_teams),
-      })
+      }
 
-      setFormValues(initialFormValues)
-      setCreateSuccess('Season added successfully.')
+      if (editingSeasonId) {
+        await putJson(`/seasons/${editingSeasonId}`, payload)
+      } else {
+        await postJson('/seasons', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingSeasonId ? 'Season updated successfully.' : 'Season added successfully.')
       setReloadCount((count) => count + 1)
     } catch (submitError) {
-      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add season')
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not save season')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteSeason(seasonId: number) {
+    setDeletingSeasonId(seasonId)
+    setError(null)
+
+    try {
+      await deleteJson(`/seasons/${seasonId}`)
+      setSeasons((current) => current.filter((season) => season.id !== seasonId))
+      if (editingSeasonId === seasonId) {
+        resetForm()
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete season')
+    } finally {
+      setDeletingSeasonId(null)
     }
   }
 
@@ -144,8 +186,8 @@ export function SeasonsView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Season</h3>
-        <form onSubmit={handleCreateSeason} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <h3 className="text-base font-semibold text-white">{editingSeasonId ? 'Edit Season' : 'Add Season'}</h3>
+        <form onSubmit={handleSubmitSeason} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium text-slate-200">
             Year
             <input
@@ -208,8 +250,17 @@ export function SeasonsView() {
               disabled={isCreating}
               className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Season'}
+              {isCreating ? 'Saving...' : editingSeasonId ? 'Save Season' : 'Add Season'}
             </button>
+            {editingSeasonId ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="ml-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            ) : null}
             {createError ? <p className="mt-2 text-sm text-red-300">{createError}</p> : null}
             {createSuccess ? <p className="mt-2 text-sm text-emerald-300">{createSuccess}</p> : null}
           </div>
@@ -241,6 +292,9 @@ export function SeasonsView() {
                   <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Teams
                   </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -255,6 +309,25 @@ export function SeasonsView() {
                       {season.playoff_format || 'Unknown'}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{season.total_teams}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditSeason(season)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingSeasonId === season.id}
+                          onClick={() => handleDeleteSeason(season.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingSeasonId === season.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

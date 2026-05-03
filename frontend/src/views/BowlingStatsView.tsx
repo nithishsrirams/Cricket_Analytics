@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { fetchJson, postJson } from '../lib/api'
+import { deleteJson, fetchJson, postJson, putJson } from '../lib/api'
 
 type BowlingRow = {
   id: number
@@ -66,6 +66,8 @@ export function BowlingStatsView() {
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
+  const [editingBowlingStatId, setEditingBowlingStatId] = useState<number | null>(null)
+  const [deletingBowlingStatId, setDeletingBowlingStatId] = useState<number | null>(null)
   const [formValues, setFormValues] = useState<BowlingFormValues>(initialFormValues)
 
   useEffect(() => {
@@ -148,29 +150,71 @@ export function BowlingStatsView() {
     setFormValues((current) => ({ ...current, [field]: value }))
   }
 
-  async function handleCreateBowlingStat(event: React.FormEvent<HTMLFormElement>) {
+  function resetForm() {
+    setFormValues(initialFormValues)
+    setEditingBowlingStatId(null)
+  }
+
+  function handleEditBowlingStat(stat: BowlingRow) {
+    setEditingBowlingStatId(stat.id)
+    setCreateError(null)
+    setCreateSuccess(null)
+    setFormValues({
+      match_id: String(stat.match_id),
+      player_id: String(stat.player_id),
+      overs: String(stat.overs),
+      wickets: String(stat.wickets),
+      runs_conceded: String(stat.runs_conceded),
+      extras: String(stat.extras),
+    })
+  }
+
+  async function handleSubmitBowlingStat(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreateError(null)
     setCreateSuccess(null)
     setIsCreating(true)
 
     try {
-      await postJson('/bowling_stats', {
+      const payload = {
         match_id: Number(formValues.match_id),
         player_id: Number(formValues.player_id),
         overs: Number(formValues.overs),
         wickets: Number(formValues.wickets),
         runs_conceded: Number(formValues.runs_conceded),
         extras: Number(formValues.extras),
-      })
+      }
 
-      setFormValues(initialFormValues)
-      setCreateSuccess('Bowling stat added successfully.')
+      if (editingBowlingStatId) {
+        await putJson(`/bowling_stats/${editingBowlingStatId}`, payload)
+      } else {
+        await postJson('/bowling_stats', payload)
+      }
+
+      resetForm()
+      setCreateSuccess(editingBowlingStatId ? 'Bowling stat updated successfully.' : 'Bowling stat added successfully.')
       setReloadCount((count) => count + 1)
     } catch (submitError) {
-      setCreateError(submitError instanceof Error ? submitError.message : 'Could not add bowling stat')
+      setCreateError(submitError instanceof Error ? submitError.message : 'Could not save bowling stat')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteBowlingStat(statId: number) {
+    setDeletingBowlingStatId(statId)
+    setError(null)
+
+    try {
+      await deleteJson(`/bowling_stats/${statId}`)
+      setBowlingStats((current) => current.filter((stat) => stat.id !== statId))
+      if (editingBowlingStatId === statId) {
+        resetForm()
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete bowling stat')
+    } finally {
+      setDeletingBowlingStatId(null)
     }
   }
 
@@ -193,8 +237,10 @@ export function BowlingStatsView() {
       </div>
 
       <div className="border-b border-white/10 bg-white/5 p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-white">Add Bowling Stat</h3>
-        <form onSubmit={handleCreateBowlingStat} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <h3 className="text-base font-semibold text-white">
+          {editingBowlingStatId ? 'Edit Bowling Stat' : 'Add Bowling Stat'}
+        </h3>
+        <form onSubmit={handleSubmitBowlingStat} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium text-slate-200">
             Match
             <select
@@ -284,9 +330,21 @@ export function BowlingStatsView() {
               disabled={isCreating}
               className="w-full rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isCreating ? 'Adding...' : 'Add Bowling Stat'}
+              {isCreating ? 'Saving...' : editingBowlingStatId ? 'Save Bowling Stat' : 'Add Bowling Stat'}
             </button>
           </div>
+
+          {editingBowlingStatId ? (
+            <div className="flex items-end sm:col-span-2">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="w-full rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+              >
+                Cancel Edit
+              </button>
+            </div>
+          ) : null}
 
           {createError ? <p className="sm:col-span-2 lg:col-span-4 text-sm text-red-300">{createError}</p> : null}
           {createSuccess ? (
@@ -326,6 +384,9 @@ export function BowlingStatsView() {
                   <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
                     Extras
                   </th>
+                  <th className="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -342,6 +403,25 @@ export function BowlingStatsView() {
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{stat.wickets}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{stat.runs_conceded}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">{stat.extras}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-sm text-slate-200">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditBowlingStat(stat)}
+                          className="rounded-lg border border-amber-300/40 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingBowlingStatId === stat.id}
+                          onClick={() => handleDeleteBowlingStat(stat.id)}
+                          className="rounded-lg border border-red-300/40 px-3 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingBowlingStatId === stat.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
