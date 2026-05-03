@@ -1,9 +1,30 @@
+from decimal import Decimal
+
 from flask import Blueprint, jsonify
-from sqlalchemy import func
+from sqlalchemy import Integer, cast, func
 
 from app.models import BattingStat, BowlingStat, Contract, Match, Player, Team, db
 
 bp = Blueprint("analytics", __name__)
+
+
+def analytics_rows(result):
+    return [
+        {
+            key: analytics_value(value)
+            for key, value in row._mapping.items()
+        }
+        for row in result
+    ]
+
+
+def analytics_value(value):
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+
+    return value
 
 
 @bp.route("/analytics/top_batsmen", methods=["GET"])
@@ -22,7 +43,7 @@ def top_batsmen():
         .limit(5)
         .all()
     )
-    return jsonify([dict(r._mapping) for r in result])
+    return jsonify(analytics_rows(result))
 
 
 @bp.route("/analytics/top_bowlers", methods=["GET"])
@@ -38,48 +59,41 @@ def top_bowlers():
         .limit(5)
         .all()
     )
-    return jsonify([dict(r._mapping) for r in result])
+    return jsonify(analytics_rows(result))
 
 
 @bp.route("/analytics/value_players", methods=["GET"])
 def value_players():
+    not_outs = func.sum(cast(BattingStat.not_out, Integer))
+    value_index = (
+        (
+            func.sum(BattingStat.runs)
+            + 2 * func.sum(BattingStat.fours)
+            + 3 * func.sum(BattingStat.sixes)
+            + 5 * not_outs
+        )
+        / func.sum(Contract.salary_inr)
+    )
+
     result = (
         db.session.query(
             Player.name,
             func.sum(BattingStat.runs).label("runs"),
             func.sum(BattingStat.fours).label("fours"),
             func.sum(BattingStat.sixes).label("sixes"),
-            func.sum(BattingStat.not_out).label("not_outs"),
+            not_outs.label("not_outs"),
             func.sum(Contract.salary_inr).label("salary"),
-            (
-                (
-                    func.sum(BattingStat.runs)
-                    + 2 * func.sum(BattingStat.fours)
-                    + 3 * func.sum(BattingStat.sixes)
-                    + 5 * func.sum(BattingStat.not_out)
-                )
-                / func.sum(Contract.salary_inr)
-            ).label("value_index"),
+            value_index.label("value_index"),
         )
         .join(BattingStat, Player.player_id == BattingStat.player_id)
         .join(Contract, Player.player_id == Contract.player_id)
         .group_by(Player.player_id)
-        .order_by(
-            (
-                (
-                    func.sum(BattingStat.runs)
-                    + 2 * func.sum(BattingStat.fours)
-                    + 3 * func.sum(BattingStat.sixes)
-                    + 5 * func.sum(BattingStat.not_out)
-                )
-                / func.sum(Contract.salary_inr)
-            ).desc()
-        )
+        .order_by(value_index.desc())
         .limit(5)
         .all()
     )
 
-    return jsonify([dict(r._mapping) for r in result])
+    return jsonify(analytics_rows(result))
 
 
 @bp.route("/analytics/team_wins")
@@ -95,7 +109,7 @@ def team_wins():
         .all()
     )
 
-    return jsonify([dict(r._mapping) for r in result])
+    return jsonify(analytics_rows(result))
 
 
 @bp.route("/analytics/avg_runs")
@@ -111,4 +125,4 @@ def avg_runs():
         .all()
     )
 
-    return jsonify([dict(r._mapping) for r in result])
+    return jsonify(analytics_rows(result))
