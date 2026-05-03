@@ -5,11 +5,18 @@ import { fetchJson, postJson } from '../lib/api'
 type Player = {
   id: number
   name: string
+  nationality: string | null
   role: string | null
+}
+
+type PlayerOptions = {
+  nationalities: string[]
+  roles: string[]
 }
 
 export function PlayersView() {
   const [players, setPlayers] = useState<Player[]>([])
+  const [playerOptions, setPlayerOptions] = useState<PlayerOptions>({ nationalities: [], roles: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchText, setSearchText] = useState('')
@@ -33,9 +40,13 @@ export function PlayersView() {
       setError(null)
 
       try {
-        const data = await fetchJson<Player[]>('/players')
+        const [data, options] = await Promise.all([
+          fetchJson<Player[]>('/players'),
+          fetchJson<PlayerOptions>('/players/options'),
+        ])
         if (isMounted) {
           setPlayers(data)
+          setPlayerOptions(options)
         }
       } catch (err) {
         if (isMounted) {
@@ -55,15 +66,25 @@ export function PlayersView() {
     }
   }, [reloadCount])
 
+  const nationalityOptions = useMemo(() => {
+    const nationalities = new Set(
+      [...playerOptions.nationalities, ...players.map((player) => player.nationality)]
+        .map((nationality) => nationality?.trim())
+        .filter((nationality): nationality is string => Boolean(nationality)),
+    )
+
+    return Array.from(nationalities).sort((a, b) => a.localeCompare(b))
+  }, [playerOptions.nationalities, players])
+
   const roleOptions = useMemo(() => {
     const roles = new Set(
-      players
-        .map((player) => player.role?.trim())
+      [...playerOptions.roles, ...players.map((player) => player.role)]
+        .map((role) => role?.trim())
         .filter((role): role is string => Boolean(role)),
     )
 
     return ['all', ...Array.from(roles).sort((a, b) => a.localeCompare(b))]
-  }, [players])
+  }, [playerOptions.roles, players])
 
   const filteredPlayers = useMemo(() => {
     const normalizedSearch = searchText.trim().toLowerCase()
@@ -74,7 +95,7 @@ export function PlayersView() {
         player.name.toLowerCase().includes(normalizedSearch) ||
         String(player.id).includes(normalizedSearch)
 
-      const matchesRole = selectedRole === 'all' || player.role === selectedRole
+      const matchesRole = selectedRole === 'all' || player.role?.trim() === selectedRole
 
       return matchesSearch && matchesRole
     })
@@ -169,20 +190,36 @@ export function PlayersView() {
           <label className="text-sm font-medium text-slate-200">
             Nationality
             <input
+              list="player-nationality-options"
               value={formValues.nationality}
               required
+              placeholder="Select or type nationality"
               onChange={(event) => setFormValues((current) => ({ ...current, nationality: event.target.value }))}
               className="mt-1 w-full rounded-lg border border-white/20 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-amber-400 focus:outline-none"
             />
+            <datalist id="player-nationality-options">
+              {nationalityOptions.map((nationality) => (
+                <option key={nationality} value={nationality} />
+              ))}
+            </datalist>
           </label>
           <label className="text-sm font-medium text-slate-200">
             Role
             <input
+              list="player-role-options"
               value={formValues.role}
               required
+              placeholder="Select or type role"
               onChange={(event) => setFormValues((current) => ({ ...current, role: event.target.value }))}
               className="mt-1 w-full rounded-lg border border-white/20 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-400 focus:border-amber-400 focus:outline-none"
             />
+            <datalist id="player-role-options">
+              {roleOptions
+                .filter((role) => role !== 'all')
+                .map((role) => (
+                  <option key={role} value={role} />
+                ))}
+            </datalist>
           </label>
 
           <div className="flex items-end">

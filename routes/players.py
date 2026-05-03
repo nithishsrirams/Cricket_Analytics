@@ -4,6 +4,15 @@ from app.models import Player, db
 
 bp = Blueprint("players", __name__)
 
+
+def _distinct_player_values(column):
+    values = db.session.query(column).distinct().all()
+    return sorted(
+        {value.strip() for (value,) in values if value and value.strip()},
+        key=str.lower,
+    )
+
+
 @bp.route("/players", methods=["GET"])
 def get_players():
     role = request.args.get("role")
@@ -19,19 +28,34 @@ def get_players():
         {
             "id": p.player_id,
             "name": p.name,
+            "nationality": p.nationality,
             "role": p.role
         } for p in players
     ])
 
 
+@bp.route("/players/options", methods=["GET"])
+def get_player_options():
+    return jsonify({
+        "nationalities": _distinct_player_values(Player.nationality),
+        "roles": _distinct_player_values(Player.role),
+    })
+
+
 @bp.route("/players", methods=["POST"])
 def add_player():
-    data = request.json
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    nationality = (data.get("nationality") or "").strip()
+    role = (data.get("role") or "").strip()
+
+    if not name or not nationality or not role:
+        return jsonify({"message": "Name, nationality, and role are required"}), 400
 
     new_player = Player(
-        name=data["name"],
-        nationality=data["nationality"],
-        role=data["role"],
+        name=name,
+        nationality=nationality,
+        role=role,
     )
 
     db.session.add(new_player)
@@ -46,6 +70,7 @@ def get_player(id):
     return jsonify({
         "id": player.player_id,
         "name": player.name,
+        "nationality": player.nationality,
         "role": player.role
     })
 
