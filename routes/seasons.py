@@ -20,13 +20,27 @@ def get_seasons():
 
 @bp.route("/seasons", methods=["POST"])
 def add_season():
-    data = request.json
+    data = request.get_json() or {}
+    league = (data.get("league") or "").strip()
+    playoff_format = (data.get("playoff_format") or "").strip() or None
+
+    try:
+        year = int(data.get("year"))
+        total_teams = int(data.get("total_teams"))
+    except (TypeError, ValueError):
+        return jsonify({"message": "Year and total teams must be valid"}), 400
+
+    if not league:
+        return jsonify({"message": "League is required"}), 400
+
+    if total_teams < 0:
+        return jsonify({"message": "Total teams must be zero or greater"}), 400
 
     new_season = Season(
-        year=data["year"],
-        league=data["league"],
-        playoff_format=data.get("playoff_format"),
-        total_teams=data["total_teams"],
+        year=year,
+        league=league,
+        playoff_format=playoff_format,
+        total_teams=total_teams,
     )
 
     db.session.add(new_season)
