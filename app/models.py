@@ -73,8 +73,8 @@ class BattingStat(db.Model):
     fours = db.Column(db.Integer)
     sixes = db.Column(db.Integer)
     not_out = db.Column(db.Boolean)
-    extras = db.Column(db.Integer)
-    overs = db.Column(db.Numeric)
+    # extras = db.Column(db.Integer)
+    # overs = db.Column(db.Numeric)
 
 
 class BowlingStat(db.Model):
